@@ -11,7 +11,6 @@
     background: #111;
     color: #fff;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100vh;
@@ -24,9 +23,7 @@
     width: 90%;
   }
 
-  h1 {
-    margin-bottom: 5px;
-  }
+  h1 { margin-bottom: 5px; }
 
   #difficulty {
     font-size: 0.9rem;
@@ -79,7 +76,7 @@
 
 <div id="game">
   <h1>Pitch Match</h1>
-  <div id="difficulty">Difficulty: --</div>
+  <div id="difficulty"></div>
   <p>Was the second tone the SAME?</p>
 
   <div id="progress-container">
@@ -101,8 +98,8 @@
 const TOTAL_ROUNDS = 20;
 let round = 0;
 let currentAnswerSame = false;
+let waitingForStart = true;
 
-// Load persistent difficulty
 let difficultyOffset = parseFloat(localStorage.getItem("difficulty")) || 80;
 
 const MIN_OFFSET = 3;
@@ -122,6 +119,15 @@ function updateDifficultyDisplay() {
     "Difficulty (difference): " + difficultyOffset.toFixed(1) + " Hz";
 }
 
+// 🔊 Volume scaling: higher freq = quieter
+function getVolumeForFrequency(freq) {
+  const minFreq = 200;
+  const maxFreq = 4000;
+
+  const normalized = (freq - minFreq) / (maxFreq - minFreq);
+  return 0.5 * (1 - 0.6 * normalized); // reduces up to ~60%
+}
+
 function playTone(freq, duration = 0.5) {
   return new Promise(resolve => {
     const osc = audioCtx.createOscillator();
@@ -130,8 +136,10 @@ function playTone(freq, duration = 0.5) {
     osc.frequency.value = freq;
     osc.type = "sine";
 
+    const volume = getVolumeForFrequency(freq);
+
     gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.5, audioCtx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(volume, audioCtx.currentTime + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
 
     osc.connect(gain);
@@ -145,15 +153,16 @@ function playTone(freq, duration = 0.5) {
 }
 
 async function playRound() {
+  waitingForStart = false;
   document.body.classList.remove("green", "red");
   document.getElementById("status").textContent = "Listen...";
 
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise(r => setTimeout(r, 400)); // extra delay
 
   let baseFreq = pitches[Math.floor(Math.random() * pitches.length)];
   await playTone(baseFreq);
 
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 350));
 
   currentAnswerSame = Math.random() < 0.5;
 
@@ -171,7 +180,7 @@ async function playRound() {
 }
 
 function playFeedback(correct) {
-  playTone(correct ? 800 : 200, 0.2);
+  playTone(correct ? 700 : 180, 0.2);
 }
 
 function updateProgress() {
@@ -180,20 +189,16 @@ function updateProgress() {
 }
 
 function adjustDifficulty(correct) {
-  if (correct) {
-    difficultyOffset *= 0.85;
-  } else {
-    difficultyOffset *= 1.25;
-  }
+  if (correct) difficultyOffset *= 0.85;
+  else difficultyOffset *= 1.25;
 
   difficultyOffset = Math.max(MIN_OFFSET, Math.min(MAX_OFFSET, difficultyOffset));
-
   localStorage.setItem("difficulty", difficultyOffset);
   updateDifficultyDisplay();
 }
 
 function handleAnswer(isYes) {
-  if (round >= TOTAL_ROUNDS) return;
+  if (round >= TOTAL_ROUNDS || waitingForStart) return;
 
   const correct = (isYes === currentAnswerSame);
 
@@ -210,15 +215,16 @@ function handleAnswer(isYes) {
     return;
   }
 
-  setTimeout(playRound, 800);
+  waitingForStart = true;
+  document.getElementById("status").textContent = "Press SPACE to start next round";
 }
 
 function restartGame() {
   round = 0;
   updateProgress();
   document.getElementById("endControls").style.display = "none";
-  document.getElementById("status").textContent = "";
-  playRound();
+  waitingForStart = true;
+  document.getElementById("status").textContent = "Press SPACE to start";
 }
 
 function resetDifficulty() {
@@ -233,16 +239,22 @@ document.getElementById("noBtn").onclick = () => handleAnswer(false);
 document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "f") handleAnswer(true);
   if (e.key.toLowerCase() === "j") handleAnswer(false);
+
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (waitingForStart && round < TOTAL_ROUNDS) {
+      playRound();
+    }
+  }
 });
 
+// initial start
 document.body.addEventListener("click", async () => {
   if (audioCtx.state === "suspended") {
     await audioCtx.resume();
   }
-  if (round === 0) {
-    updateDifficultyDisplay();
-    playRound();
-  }
+  updateDifficultyDisplay();
+  document.getElementById("status").textContent = "Press SPACE to start";
 }, { once: true });
 
 updateDifficultyDisplay();
