@@ -18,38 +18,39 @@
     transition: background 0.3s ease;
   }
 
-  h1 {
-    margin-bottom: 10px;
-  }
-
   #game {
     text-align: center;
-    max-width: 400px;
+    max-width: 420px;
     width: 90%;
   }
 
+  h1 {
+    margin-bottom: 5px;
+  }
+
+  #difficulty {
+    font-size: 0.9rem;
+    opacity: 0.8;
+    margin-bottom: 10px;
+  }
+
   button {
-    font-size: 1.5rem;
-    padding: 15px 25px;
-    margin: 10px;
+    font-size: 1.3rem;
+    padding: 12px 20px;
+    margin: 8px;
     border: none;
     border-radius: 8px;
     cursor: pointer;
     background: #333;
     color: white;
-    transition: transform 0.1s;
-  }
-
-  button:active {
-    transform: scale(0.95);
   }
 
   #progress-container {
     width: 100%;
     background: #333;
     border-radius: 10px;
-    margin: 20px 0;
-    height: 20px;
+    margin: 15px 0;
+    height: 18px;
     overflow: hidden;
   }
 
@@ -65,12 +66,12 @@
     min-height: 24px;
   }
 
-  .green {
-    background: #0a3;
-  }
+  .green { background: #0a3; }
+  .red { background: #a00; }
 
-  .red {
-    background: #a00;
+  #endControls {
+    margin-top: 15px;
+    display: none;
   }
 </style>
 </head>
@@ -78,6 +79,7 @@
 
 <div id="game">
   <h1>Pitch Match</h1>
+  <div id="difficulty">Difficulty: --</div>
   <p>Was the second tone the SAME?</p>
 
   <div id="progress-container">
@@ -85,9 +87,14 @@
   </div>
 
   <button id="yesBtn">F = YES</button>
-  <button id="noBtn">G = NO</button>
+  <button id="noBtn">J = NO</button>
 
   <div id="status"></div>
+
+  <div id="endControls">
+    <button onclick="restartGame()">Play Again</button>
+    <button onclick="resetDifficulty()">Reset Difficulty</button>
+  </div>
 </div>
 
 <script>
@@ -95,20 +102,25 @@ const TOTAL_ROUNDS = 20;
 let round = 0;
 let currentAnswerSame = false;
 
-// Adaptive difficulty state
-let difficultyOffset = 80; // starting difficulty
+// Load persistent difficulty
+let difficultyOffset = parseFloat(localStorage.getItem("difficulty")) || 80;
+
 const MIN_OFFSET = 3;
 const MAX_OFFSET = 200;
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-// Generate 20 pitches (log spaced)
 const pitches = Array.from({length: 20}, (_, i) => {
   const min = 200;
   const max = 4000;
   const ratio = i / 19;
   return min * Math.pow(max/min, ratio);
 });
+
+function updateDifficultyDisplay() {
+  document.getElementById("difficulty").textContent =
+    "Difficulty (difference): " + difficultyOffset.toFixed(1) + " Hz";
+}
 
 function playTone(freq, duration = 0.5) {
   return new Promise(resolve => {
@@ -159,8 +171,7 @@ async function playRound() {
 }
 
 function playFeedback(correct) {
-  const freq = correct ? 800 : 200;
-  playTone(freq, 0.2);
+  playTone(correct ? 800 : 200, 0.2);
 }
 
 function updateProgress() {
@@ -170,15 +181,15 @@ function updateProgress() {
 
 function adjustDifficulty(correct) {
   if (correct) {
-    // make harder
     difficultyOffset *= 0.85;
   } else {
-    // make easier
     difficultyOffset *= 1.25;
   }
 
-  // clamp values
   difficultyOffset = Math.max(MIN_OFFSET, Math.min(MAX_OFFSET, difficultyOffset));
+
+  localStorage.setItem("difficulty", difficultyOffset);
+  updateDifficultyDisplay();
 }
 
 function handleAnswer(isYes) {
@@ -186,12 +197,7 @@ function handleAnswer(isYes) {
 
   const correct = (isYes === currentAnswerSame);
 
-  if (correct) {
-    document.body.classList.add("green");
-  } else {
-    document.body.classList.add("red");
-  }
-
+  document.body.classList.add(correct ? "green" : "red");
   playFeedback(correct);
   adjustDifficulty(correct);
 
@@ -200,32 +206,46 @@ function handleAnswer(isYes) {
 
   if (round >= TOTAL_ROUNDS) {
     document.getElementById("status").textContent = "Game Over!";
+    document.getElementById("endControls").style.display = "block";
     return;
   }
 
   setTimeout(playRound, 800);
 }
 
-// Buttons
+function restartGame() {
+  round = 0;
+  updateProgress();
+  document.getElementById("endControls").style.display = "none";
+  document.getElementById("status").textContent = "";
+  playRound();
+}
+
+function resetDifficulty() {
+  difficultyOffset = 80;
+  localStorage.setItem("difficulty", difficultyOffset);
+  updateDifficultyDisplay();
+}
+
 document.getElementById("yesBtn").onclick = () => handleAnswer(true);
 document.getElementById("noBtn").onclick = () => handleAnswer(false);
 
-// Keyboard
 document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "f") handleAnswer(true);
-  if (e.key.toLowerCase() === "g") handleAnswer(false);
+  if (e.key.toLowerCase() === "j") handleAnswer(false);
 });
 
-// Start game on first interaction
 document.body.addEventListener("click", async () => {
   if (audioCtx.state === "suspended") {
     await audioCtx.resume();
   }
   if (round === 0) {
+    updateDifficultyDisplay();
     playRound();
   }
 }, { once: true });
 
+updateDifficultyDisplay();
 </script>
 
 </body>
