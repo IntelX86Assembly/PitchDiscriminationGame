@@ -102,16 +102,18 @@ let currentAnswerSame = false;
 let waitingForStart = true;
 let audioReady = false;
 
-let difficultyOffset = parseFloat(localStorage.getItem("difficulty")) || 80;
-
-const MIN_OFFSET = 3;
+// 🔽 Lower minimum difficulty
+const MIN_OFFSET = 1;
 const MAX_OFFSET = 200;
+
+let difficultyOffset = parseFloat(localStorage.getItem("difficulty")) || 80;
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+// 🔻 Lower pitch range
 const pitches = Array.from({length: 20}, (_, i) => {
-  const min = 200;
-  const max = 4000;
+  const min = 150;
+  const max = 2200;
   const ratio = i / 19;
   return min * Math.pow(max/min, ratio);
 });
@@ -121,18 +123,17 @@ function updateDifficultyDisplay() {
     "Difficulty: " + difficultyOffset.toFixed(1) + " Hz difference";
 }
 
-// 🔊 Improved psychoacoustic scaling
+// 🔊 Stronger high-frequency attenuation
 function getVolumeForFrequency(freq) {
-  const minFreq = 200;
-  const maxFreq = 4000;
+  const minFreq = 150;
+  const maxFreq = 2200;
 
   const normalized = (freq - minFreq) / (maxFreq - minFreq);
 
-  // nonlinear dropoff (more aggressive for highs)
-  let volume = 0.4 * Math.pow(1 - normalized, 1.5);
+  // stronger curve + lower ceiling
+  let volume = 0.35 * Math.pow(1 - normalized, 1.7);
 
-  // clamp to avoid harsh spikes
-  return Math.max(0.05, volume);
+  return Math.max(0.04, volume);
 }
 
 function playTone(freq, duration = 0.5) {
@@ -260,7 +261,6 @@ document.addEventListener("keydown", async (e) => {
   }
 });
 
-// Initialize UI immediately
 updateDifficultyDisplay();
 </script>
 </body>
