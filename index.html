@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pitch Match Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    transition: background 0.3s ease;
+  }
+
+  h1 {
+    margin-bottom: 10px;
+  }
+
+  #game {
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+  }
+
+  button {
+    font-size: 1.5rem;
+    padding: 15px 25px;
+    margin: 10px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #333;
+    color: white;
+    transition: transform 0.1s;
+  }
+
+  button:active {
+    transform: scale(0.95);
+  }
+
+  #progress-container {
+    width: 100%;
+    background: #333;
+    border-radius: 10px;
+    margin: 20px 0;
+    height: 20px;
+    overflow: hidden;
+  }
+
+  #progress-bar {
+    height: 100%;
+    width: 0%;
+    background: limegreen;
+    transition: width 0.3s;
+  }
+
+  #status {
+    margin-top: 10px;
+    min-height: 24px;
+  }
+
+  .green {
+    background: #0a3;
+  }
+
+  .red {
+    background: #a00;
+  }
+</style>
+</head>
+<body>
+
+<div id="game">
+  <h1>Pitch Match</h1>
+  <p>Was the second tone the SAME?</p>
+
+  <div id="progress-container">
+    <div id="progress-bar"></div>
+  </div>
+
+  <button id="yesBtn">F = YES</button>
+  <button id="noBtn">G = NO</button>
+
+  <div id="status"></div>
+</div>
+
+<script>
+const TOTAL_ROUNDS = 20;
+let round = 0;
+let currentAnswerSame = false;
+
+// Adaptive difficulty state
+let difficultyOffset = 80; // starting difficulty
+const MIN_OFFSET = 3;
+const MAX_OFFSET = 200;
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// Generate 20 pitches (log spaced)
+const pitches = Array.from({length: 20}, (_, i) => {
+  const min = 200;
+  const max = 4000;
+  const ratio = i / 19;
+  return min * Math.pow(max/min, ratio);
+});
+
+function playTone(freq, duration = 0.5) {
+  return new Promise(resolve => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.frequency.value = freq;
+    osc.type = "sine";
+
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.5, audioCtx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+
+    osc.onended = resolve;
+  });
+}
+
+async function playRound() {
+  document.body.classList.remove("green", "red");
+  document.getElementById("status").textContent = "Listen...";
+
+  await new Promise(r => setTimeout(r, 500));
+
+  let baseFreq = pitches[Math.floor(Math.random() * pitches.length)];
+  await playTone(baseFreq);
+
+  await new Promise(r => setTimeout(r, 300));
+
+  currentAnswerSame = Math.random() < 0.5;
+
+  let secondFreq;
+  if (currentAnswerSame) {
+    secondFreq = baseFreq;
+  } else {
+    const direction = Math.random() < 0.5 ? -1 : 1;
+    secondFreq = Math.max(100, baseFreq + direction * difficultyOffset);
+  }
+
+  await playTone(secondFreq);
+
+  document.getElementById("status").textContent = "Your guess?";
+}
+
+function playFeedback(correct) {
+  const freq = correct ? 800 : 200;
+  playTone(freq, 0.2);
+}
+
+function updateProgress() {
+  const percent = (round / TOTAL_ROUNDS) * 100;
+  document.getElementById("progress-bar").style.width = percent + "%";
+}
+
+function adjustDifficulty(correct) {
+  if (correct) {
+    // make harder
+    difficultyOffset *= 0.85;
+  } else {
+    // make easier
+    difficultyOffset *= 1.25;
+  }
+
+  // clamp values
+  difficultyOffset = Math.max(MIN_OFFSET, Math.min(MAX_OFFSET, difficultyOffset));
+}
+
+function handleAnswer(isYes) {
+  if (round >= TOTAL_ROUNDS) return;
+
+  const correct = (isYes === currentAnswerSame);
+
+  if (correct) {
+    document.body.classList.add("green");
+  } else {
+    document.body.classList.add("red");
+  }
+
+  playFeedback(correct);
+  adjustDifficulty(correct);
+
+  round++;
+  updateProgress();
+
+  if (round >= TOTAL_ROUNDS) {
+    document.getElementById("status").textContent = "Game Over!";
+    return;
+  }
+
+  setTimeout(playRound, 800);
+}
+
+// Buttons
+document.getElementById("yesBtn").onclick = () => handleAnswer(true);
+document.getElementById("noBtn").onclick = () => handleAnswer(false);
+
+// Keyboard
+document.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "f") handleAnswer(true);
+  if (e.key.toLowerCase() === "g") handleAnswer(false);
+});
+
+// Start game on first interaction
+document.body.addEventListener("click", async () => {
+  if (audioCtx.state === "suspended") {
+    await audioCtx.resume();
+  }
+  if (round === 0) {
+    playRound();
+  }
+}, { once: true });
+
+</script>
+
+</body>
+</html>
