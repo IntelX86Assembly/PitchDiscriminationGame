@@ -61,6 +61,7 @@
   #status {
     margin-top: 10px;
     min-height: 24px;
+    font-size: 1.1rem;
   }
 
   .green { background: #0a3; }
@@ -86,7 +87,7 @@
   <button id="yesBtn">F = YES</button>
   <button id="noBtn">J = NO</button>
 
-  <div id="status"></div>
+  <div id="status">Press SPACE to start</div>
 
   <div id="endControls">
     <button onclick="restartGame()">Play Again</button>
@@ -99,6 +100,7 @@ const TOTAL_ROUNDS = 20;
 let round = 0;
 let currentAnswerSame = false;
 let waitingForStart = true;
+let audioReady = false;
 
 let difficultyOffset = parseFloat(localStorage.getItem("difficulty")) || 80;
 
@@ -116,16 +118,21 @@ const pitches = Array.from({length: 20}, (_, i) => {
 
 function updateDifficultyDisplay() {
   document.getElementById("difficulty").textContent =
-    "Difficulty (difference): " + difficultyOffset.toFixed(1) + " Hz";
+    "Difficulty: " + difficultyOffset.toFixed(1) + " Hz difference";
 }
 
-// 🔊 Volume scaling: higher freq = quieter
+// 🔊 Improved psychoacoustic scaling
 function getVolumeForFrequency(freq) {
   const minFreq = 200;
   const maxFreq = 4000;
 
   const normalized = (freq - minFreq) / (maxFreq - minFreq);
-  return 0.5 * (1 - 0.6 * normalized); // reduces up to ~60%
+
+  // nonlinear dropoff (more aggressive for highs)
+  let volume = 0.4 * Math.pow(1 - normalized, 1.5);
+
+  // clamp to avoid harsh spikes
+  return Math.max(0.05, volume);
 }
 
 function playTone(freq, duration = 0.5) {
@@ -138,9 +145,9 @@ function playTone(freq, duration = 0.5) {
 
     const volume = getVolumeForFrequency(freq);
 
-    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(volume, audioCtx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(volume, audioCtx.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
 
     osc.connect(gain);
     gain.connect(audioCtx.destination);
@@ -157,12 +164,12 @@ async function playRound() {
   document.body.classList.remove("green", "red");
   document.getElementById("status").textContent = "Listen...";
 
-  await new Promise(r => setTimeout(r, 400)); // extra delay
+  await new Promise(r => setTimeout(r, 500));
 
   let baseFreq = pitches[Math.floor(Math.random() * pitches.length)];
   await playTone(baseFreq);
 
-  await new Promise(r => setTimeout(r, 350));
+  await new Promise(r => setTimeout(r, 400));
 
   currentAnswerSame = Math.random() < 0.5;
 
@@ -180,7 +187,7 @@ async function playRound() {
 }
 
 function playFeedback(correct) {
-  playTone(correct ? 700 : 180, 0.2);
+  playTone(correct ? 600 : 180, 0.25);
 }
 
 function updateProgress() {
@@ -236,7 +243,12 @@ function resetDifficulty() {
 document.getElementById("yesBtn").onclick = () => handleAnswer(true);
 document.getElementById("noBtn").onclick = () => handleAnswer(false);
 
-document.addEventListener("keydown", (e) => {
+document.addEventListener("keydown", async (e) => {
+  if (!audioReady) {
+    await audioCtx.resume();
+    audioReady = true;
+  }
+
   if (e.key.toLowerCase() === "f") handleAnswer(true);
   if (e.key.toLowerCase() === "j") handleAnswer(false);
 
@@ -248,17 +260,11 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// initial start
-document.body.addEventListener("click", async () => {
-  if (audioCtx.state === "suspended") {
-    await audioCtx.resume();
-  }
-  updateDifficultyDisplay();
-  document.getElementById("status").textContent = "Press SPACE to start";
-}, { once: true });
-
+// Initialize UI immediately
 updateDifficultyDisplay();
 </script>
+</body>
+</html>
 
 </body>
 </html>
